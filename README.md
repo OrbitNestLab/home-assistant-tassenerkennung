@@ -1,6 +1,6 @@
 # Tassenerkennung for Home Assistant
 
-Local cup recognition for a coffee-machine camera, packaged as a Home Assistant custom integration plus a private Ingress app. Version 0.6.0 of the integration and 0.3.1 of the app are included.
+Local cup recognition for a coffee-machine camera, packaged as a Home Assistant custom integration plus a private Ingress app. Version 0.6.0 of the integration and 0.3.2 of the app are included.
 
 The project detects whether a vessel is positioned below the outlet, keeps stale or uncertain images fail-safe, learns several views of a cup, and can switch to another Home Assistant camera from its own sidebar UI. It deliberately contains **no service that starts a beverage**. Any coffee-machine automation must be created and reviewed separately.
 
@@ -21,7 +21,7 @@ The project detects whether a vessel is positioned below the outlet, keeps stale
 ## Components
 
 - `custom_components/tassenerkennung/` — Home Assistant integration 0.6.0.
-- `addon/` — local Supervisor app 0.3.1 with the model and responsive sidebar UI.
+- `addon/` — local Supervisor app 0.3.2 with the model and responsive sidebar UI.
 - `tests/` — local safety, geometry, tracking, learner and HTTP tests.
 
 ## Installation
