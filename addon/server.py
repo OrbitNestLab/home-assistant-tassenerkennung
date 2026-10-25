@@ -16,7 +16,7 @@ from web import HTML, HomeAssistantClient
 def create_handler(detector, key, ha=None):
     inference_lock=threading.Lock()
     class Handler(BaseHTTPRequestHandler):
-        server_version = "Tassenerkennung/0.3.0"
+        server_version = "Tassenerkennung/0.3.1"
 
         def setup(self):
             super().setup()
@@ -48,7 +48,7 @@ def create_handler(detector, key, ha=None):
         def do_GET(self):
             path=urlsplit(self.path).path
             if path == "/health":
-                self.respond(200, {"ready": True, "version": "0.3.0"})
+                self.respond(200, {"ready": True, "version": "0.3.1"})
             elif path in ("/","/index.html") and self.ingress():
                 self.respond_bytes(200,HTML.encode(),"text/html; charset=utf-8")
             elif path == "/app/status" and self.ingress() and ha:
@@ -120,7 +120,7 @@ def main():
         raise ValueError("Bitte einen gültigen lokalen API-Schlüssel konfigurieren.")
     detector = Detector(Path("/app/modelle/yolox_s.onnx"))
     ha=HomeAssistantClient()
-    print("Tassenerkennung App 0.3.0 bereit. Lokale Bildauswertung und sicherer Einlernassistent.", flush=True)
+    print("Tassenerkennung App 0.3.1 bereit. Lokale Bildauswertung und sicherer Einlernassistent.", flush=True)
     ThreadingHTTPServer(("0.0.0.0", 8080), create_handler(detector, key, ha)).serve_forever()
 
 
