@@ -1,6 +1,8 @@
 # Changelog
 
-## Integration 0.6.0 / App 0.3.0
+## Integration 0.6.0 / App 0.3.1
+
+- Clear the stale Home Assistant connection warning after a successful status refresh.
 
 - Added a standalone Home Assistant Ingress interface.
 - Added a guided four-stage vessel learner with nine positive samples and an empty-counter reference.
