@@ -5,6 +5,10 @@ YOLOX S statt Tiny für die bestehende Kameraposition. Positivbild bei Küchenbe
 # 0.1.0
 
 Erster lokaler Auswertungsdienst.
+# 0.3.1
+
+Die App entfernt nach dem nächsten erfolgreichen Statusabruf selbstständig eine alte Verbindungsfehlermeldung.
+
 # 0.3.0
 
 Eigenständige Home-Assistant-Seitenleisten-App mit lokalem Livebild, geführtem Einlernassistenten und sicherem Kameraschnellwechsel. Die neue Kamera kann in der App ausgewählt, vorab angesehen, übernommen und anschließend neu ausgerichtet werden. Profile einer alten Kameraperspektive werden nicht ungeprüft weiterverwendet. Der Zugriff auf Home Assistant ist auf Tassenerkennungs-Entitäten und fest definierte Schaltflächen begrenzt. Keine beliebigen Dienste und keine direkten Getränkeaktionen. Das bestehende authentifizierte Erkennungsprotokoll bleibt kompatibel.
