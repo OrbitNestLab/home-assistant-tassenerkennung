@@ -75,7 +75,7 @@ class HomeAssistantClient:
                 }
         except (urllib.error.HTTPError,urllib.error.URLError,ValueError,json.JSONDecodeError):
             pass
-        return {"app_version":"0.3.0","entities":result,
+        return {"app_version":"0.3.1","entities":result,
                 "ready":result["status"]["attributes"].get("version")=="0.6.0"}
 
     def camera(self,source=False):
@@ -125,7 +125,7 @@ label{display:block;color:var(--muted);font-size:13px;margin:11px 0 6px}select,i
 .profiles{display:flex;gap:7px;flex-wrap:wrap}.profile{border:1px solid var(--line);border-radius:99px;padding:6px 9px;color:var(--muted)}.safety{margin-top:14px;padding:12px;border-radius:14px;background:#142b2b;color:#acdcd0;line-height:1.4}.facts{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:13px}.fact{background:#14212d;border-radius:12px;padding:10px}.fact b{display:block;margin-top:2px}.hidden{display:none}.cameraSetup{margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}.preview{width:100%;max-height:190px;object-fit:contain;background:#111a24;border-radius:12px;margin-top:10px}.smallButtons{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px}
 @media(max-width:760px){main{padding:13px}.grid{grid-template-columns:1fr}.top h1{font-size:21px}.pill{display:none}.card{border-radius:17px}.buttons{grid-template-columns:1fr}.facts{grid-template-columns:1fr 1fr}}
 </style></head><body><main>
-<div class="top"><div class="logo">☕</div><div><h1>Tassenerkennung</h1><p>Lokale Becherprofile und sichere Kaffeeautomatik</p></div><div class="pill" id="version">App 0.3.0</div></div>
+<div class="top"><div class="logo">☕</div><div><h1>Tassenerkennung</h1><p>Lokale Becherprofile und sichere Kaffeeautomatik</p></div><div class="pill" id="version">App 0.3.1</div></div>
 <div class="grid"><section class="card"><h2>Live-Prüfung</h2><img class="camera" id="camera" alt="Verarbeitetes Kamerabild"><div class="status"><span class="dot" id="dot"></span><b id="mainStatus">Verbindung wird geprüft …</b></div><div class="muted" id="subStatus">Keine Geräteaktion ohne frische Bestätigung</div>
 <div class="facts"><div class="fact"><span class="muted">Kamera</span><b id="cameraState">—</b></div><div class="fact"><span class="muted">Becher</span><b id="cupState">—</b></div></div>
 <div class="safety">Die App lernt und verwaltet ausschließlich Becherprofile. Neue Profile starten kein Getränk. Während des Einlernens bleiben alle Kaffeeaktionen gesperrt.</div></section>
@@ -145,6 +145,6 @@ let options=attr('profile','options',[]),selected=state('profile');if([...$('pro
 $('nameWrap').className=selected==='+ Neuer Becher'?'':'hidden';let cameras=attr('source_camera','options',[]),source=state('source_camera');if([...$('sourceCamera').options].map(x=>x.value).join('|')!==cameras.join('|'))$('sourceCamera').innerHTML=cameras.map(x=>`<option>${escapeHtml(x)}</option>`).join('');$('sourceCamera').value=source;$('sourceCamera').disabled=active||!ready;$('applyCamera').disabled=active||!ready;$('align').disabled=active||!ready;let now=Date.now();if(source!==lastSource||now-lastSourcePreview>5000){$('sourcePreview').src='app/source-preview?t='+now;lastSource=source;lastSourcePreview=now}
 $('instruction').textContent=active?state('learning_status'):'Profil wählen und Einlernen starten.';document.querySelectorAll('.step').forEach((el,i)=>el.className='step'+(idx>=0&&i<idx?' done':idx===i?' active':''));$('start').disabled=active||!ready;$('capture').disabled=!active||!['empty','front','rotated','offset'].includes(stage);$('save').disabled=!active||stage!=='review';$('cancel').disabled=!active;$('profiles').innerHTML=options.filter(x=>x!=='+ Neuer Becher').map(x=>`<span class="profile">${escapeHtml(x)}</span>`).join('')||'<span class="muted">Noch keine Profile verfügbar</span>'}
 function escapeHtml(v){let d=document.createElement('div');d.textContent=v;return d.innerHTML}
-async function update(){try{current=await api('app/status');render();$('camera').src='app/camera?t='+Date.now()}catch(e){setMessage(e.message,true);$('mainStatus').textContent='Nicht erreichbar';$('dot').className='dot'}}
+async function update(){try{current=await api('app/status');render();if(current.ready&&$('message').textContent==='Die App konnte Home Assistant nicht erreichen.')setMessage('');$('camera').src='app/camera?t='+Date.now()}catch(e){setMessage(e.message,true);$('mainStatus').textContent='Nicht erreichbar';$('dot').className='dot'}}
 $('profile').onchange=e=>action('select_profile',{option:e.target.value});$('name').onchange=e=>action('set_name',{value:e.target.value});$('sourceCamera').onchange=e=>action('select_camera',{option:e.target.value});$('applyCamera').onclick=()=>action('apply_camera');$('align').onclick=()=>action('align');$('start').onclick=()=>action('start');$('capture').onclick=()=>action('capture');$('save').onclick=()=>action('save');$('cancel').onclick=()=>action('cancel');update();setInterval(update,1500);
 </script></body></html>'''
