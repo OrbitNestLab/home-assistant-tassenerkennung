@@ -20,7 +20,7 @@ class Detector:
 class FakeHomeAssistant:
     def __init__(self):self.actions=[]
     def status(self):
-        return {'app_version':'0.3.0','ready':True,'entities':{
+        return {'app_version':'0.3.1','ready':True,'entities':{
             'status':{'state':'Bereit','attributes':{'version':'0.6.0'}},
             'profile':{'state':'Kaffeetasse','attributes':{'options':['Kaffeetasse','+ Neuer Becher']}},
             'source_camera':{'state':'camera.eve','attributes':{'options':['camera.eve','camera.reolink']}},
