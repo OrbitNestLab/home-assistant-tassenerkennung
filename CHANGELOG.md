@@ -1,7 +1,8 @@
 # Changelog
 
-## Integration 0.6.0 / App 0.3.1
+## Integration 0.6.0 / App 0.3.2
 
+- Resolve all status, action and camera requests against the actual Home Assistant Ingress path, including URLs without a trailing slash.
 - Clear the stale Home Assistant connection warning after a successful status refresh.
 
 - Added a standalone Home Assistant Ingress interface.
