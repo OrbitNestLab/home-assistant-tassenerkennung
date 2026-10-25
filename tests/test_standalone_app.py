@@ -20,7 +20,7 @@ class Detector:
 class FakeHomeAssistant:
     def __init__(self):self.actions=[]
     def status(self):
-        return {'app_version':'0.3.1','ready':True,'entities':{
+        return {'app_version':'0.3.2','ready':True,'entities':{
             'status':{'state':'Bereit','attributes':{'version':'0.6.0'}},
             'profile':{'state':'Kaffeetasse','attributes':{'options':['Kaffeetasse','+ Neuer Becher']}},
             'source_camera':{'state':'camera.eve','attributes':{'options':['camera.eve','camera.reolink']}},
@@ -48,6 +48,10 @@ def test_ui_is_ingress_only_and_contains_learning_and_camera_switch(app):
     assert error.value.code==404
     with get(url,'/') as response:html=response.read().decode()
     assert 'Becher einlernen' in html and 'Kamera wechseln' in html
+    assert "window.location.pathname.endsWith('/')" in html
+    assert 'fetch(appUrl(path)' in html
+    assert "appUrl('app/source-preview?t='" in html
+    assert "appUrl('app/camera?t='" in html
     assert 'https://' not in html and 'http://' not in html
 
 
