@@ -1,0 +1,64 @@
+{
+  "title": "Tassenerkennung",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Lokale Tassenerkennung",
+        "description": "Wähle die Kamera an der Kaffeemaschine. Die Bilder werden lokal ausgewertet. Die Integration steuert keine Kaffeemaschine. Die Bildbereiche kannst du anschließend in den Optionen anpassen.",
+        "data": {
+          "camera": "Quellkamera",
+          "interval": "Prüfabstand in Sekunden",
+          "confidence": "Mindest-Erkennungswert (0–1)",
+          "confirmations": "Übereinstimmende Bilder bis zur Bestätigung"
+        }
+      }
+    },
+    "error": {
+      "invalid_area": "Die Grenzen eines Bereichs sind ungültig. Links muss kleiner als rechts und oben kleiner als unten sein.",
+      "invalid_settings": "Bitte gültige Werte für Abstand, Erkennungswert und Bestätigungen eingeben.",
+      "areas_outside_crop": "Tassenbereich und Maschinenreferenz müssen vollständig im Bildausschnitt liegen.",
+      "area_too_small": "Der Tassenbereich ist zu klein.",
+      "reference_overlaps_zone": "Die Maschinenreferenz darf den Tassenbereich nicht überlappen. Wähle die feste obere Maschinenfront.",
+      "camera_missing": "Die Quellkamera existiert nicht oder ist selbst eine Tassenerkennungs-Kamera.",
+      "already_configured": "Für diese Kamera gibt es bereits eine Tassenerkennung."
+    },
+    "abort": {
+      "already_configured": "Diese Kamera ist bereits eingerichtet."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Kamera und Bildbereiche",
+        "description": "Alle Grenzen sind Prozentwerte des vollständigen Kamerabilds. Die Maschinenreferenz soll eine feste Fläche oberhalb der Tasse zeigen. Nach einer Änderung der Bildbereiche die Ausrichtung im Prüfbild kontrollieren und über den Geräteknopf erneut bestätigen. Eine Bestätigung aktiviert keine Kaffeeautomatik.",
+        "data": {
+          "camera": "Quellkamera",
+          "interval": "Prüfabstand in Sekunden",
+          "confidence": "Mindest-Erkennungswert (0–1)",
+          "confirmations": "Übereinstimmende Bilder bis zur Bestätigung",
+          "crop_left": "Bildausschnitt: links (%)",
+          "crop_top": "Bildausschnitt: oben (%)",
+          "crop_right": "Bildausschnitt: rechts (%)",
+          "crop_bottom": "Bildausschnitt: unten (%)",
+          "zone_left": "Tasse unter dem Auslauf: links (%)",
+          "zone_top": "Tasse unter dem Auslauf: oben (%)",
+          "zone_right": "Tasse unter dem Auslauf: rechts (%)",
+          "zone_bottom": "Tasse unter dem Auslauf: unten (%)",
+          "anchor_left": "Maschinenfront als Positionsreferenz: links (%)",
+          "anchor_top": "Maschinenfront als Positionsreferenz: oben (%)",
+          "anchor_right": "Maschinenfront als Positionsreferenz: rechts (%)",
+          "anchor_bottom": "Maschinenfront als Positionsreferenz: unten (%)"
+        }
+      }
+    },
+    "error": {
+      "invalid_area": "Die Grenzen eines Bereichs sind ungültig. Links muss kleiner als rechts und oben kleiner als unten sein.",
+      "invalid_settings": "Bitte gültige Werte für Abstand, Erkennungswert und Bestätigungen eingeben.",
+      "areas_outside_crop": "Tassenbereich und Maschinenreferenz müssen vollständig im Bildausschnitt liegen.",
+      "area_too_small": "Der Tassenbereich ist zu klein.",
+      "reference_overlaps_zone": "Die Maschinenreferenz darf den Tassenbereich nicht überlappen. Wähle die feste obere Maschinenfront.",
+      "camera_missing": "Die Quellkamera existiert nicht oder ist selbst eine Tassenerkennungs-Kamera.",
+      "already_configured": "Für diese Kamera gibt es bereits eine Tassenerkennung."
+    }
+  }
+}

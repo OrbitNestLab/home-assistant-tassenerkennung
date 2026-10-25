@@ -1,0 +1,14 @@
+Tassenerkennung 0.1.0
+Local coffee-cup test integration for Home Assistant.
+
+YOLOX preprocessing/decoding design and model in the associated local HA app:
+Copyright (c) Megvii Inc.
+Project: https://github.com/Megvii-BaseDetection/YOLOX
+Release: 0.1.1rc0
+Models: YOLOX Tiny (initial comparison), YOLOX S (local app 0.1.1)
+License: Apache License 2.0 (see LICENSE-YOLOX)
+YOLOX S SHA256: c5c2d13e59ae883e6af3b45daea64af4833a4951c92d116ec270d9ddbe998063
+
+Roboto font: Copyright 2011 The Roboto Project Authors. SIL Open Font License 1.1 (LICENSE-FONT).
+
+Images stay on the Home Assistant server. No coffee control is implemented.

@@ -1,0 +1,23 @@
+name: Tassenerkennung
+version: "0.3.0"
+slug: tassenerkennung
+description: Selbständige lokale App zum Erkennen und Einlernen von Bechern. Keine direkten Getränkeaktionen.
+arch:
+  - amd64
+startup: application
+boot: auto
+init: true
+stage: experimental
+options:
+  api_key: ""
+schema:
+  api_key: password
+watchdog: "http://[HOST]:8080/health"
+tmpfs: true
+homeassistant_api: true
+ingress: true
+ingress_port: 8080
+ingress_stream: true
+panel_icon: mdi:coffee-maker
+panel_title: Tassenerkennung
+panel_admin: true
