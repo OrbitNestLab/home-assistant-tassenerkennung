@@ -1,5 +1,5 @@
 name: Tassenerkennung
-version: "0.3.1"
+version: "0.3.2"
 slug: tassenerkennung
 description: Selbständige lokale App zum Erkennen und Einlernen von Bechern. Keine direkten Getränkeaktionen.
 arch:
