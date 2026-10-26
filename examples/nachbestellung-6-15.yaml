@@ -1,0 +1,194 @@
+id: tassenerkennung_wiedereinschalten
+alias: Neue Tasse – Kaffee 6–15 Uhr, Einschalten bis 16 Uhr
+description: Bestätigt reguläre Kaffeeabschlüsse. Nach einem fertigen Kaffee heute
+  löst eine mindestens fünf Sekunden leer gewesene Fläche mit anschließend frisch
+  erkannter Kaffeetasse zwischen 06:00 und 15:00 einen weiteren sicheren Kaffeeablauf
+  aus, auch wenn die Maschine bereits eingeschaltet ist. Jede Platzierung wird vor
+  dem Auftrag dauerhaft als verbraucht markiert. Von 15:00 bis 16:00 wird nur eine
+  ausgeschaltete Maschine eingeschaltet. Küchenpräsenz oder ein unbeleuchteter
+  Becherhinweis schalten zunächst nur das Arbeitslicht für eine zuverlässige Prüfung
+  ein. Auch ein direkt an der Maschine gestarteter bekannter Kaffee wird nach regulärem
+  Programmende berücksichtigt; reine Milch-, Heißwasser- und Pflegeprogramme zählen
+  nicht.
+triggers:
+- trigger: event
+  event_type: tassenerkennung_kaffee_beauftragt
+  id: kaffee
+- trigger: state
+  entity_id: binary_sensor.tassenerkennung_tasse_unter_dem_auslauf
+  attribute: neu_eingestellt_am
+  id: neue_tasse
+- trigger: event
+  event_type: tassenerkennung_becher_hinweis
+  id: licht_hinweis
+- trigger: state
+  entity_id: sensor.kaffeevollautomat_betriebszustand
+  to: run
+  id: programm_start
+- trigger: state
+  entity_id: binary_sensor.kueche_praesenzsensor_occupancy
+  to: 'on'
+  id: kuechen_praesenz
+conditions:
+- condition: template
+  value_template: '{{ state_attr(''sensor.tassenerkennung_status'',''version'') ==
+    ''0.7.0'' }}'
+- condition: state
+  entity_id: binary_sensor.tassenerkennung_einlernmodus
+  state: 'off'
+actions:
+- choose:
+  - conditions: '{{ trigger.id in [''kaffee'',''programm_start''] }}'
+    sequence:
+    - if: '{{ trigger.id == ''programm_start'' }}'
+      then:
+      - wait_template: '{{ has_value(''select.kaffeevollautomat_aktives_programm'')
+          }}'
+        timeout: 00:00:05
+        continue_on_timeout: false
+    - condition: template
+      value_template: '{{ (trigger.id == ''kaffee'' and trigger.event.data.get(''quelle'')
+        == ''eine_tasse_kaffee'') or (trigger.id == ''programm_start'' and (states(''select.kaffeevollautomat_aktives_programm'').split(''_beverage_'')[-1])
+        in [''caffe_grande'', ''coffee'', ''espresso'', ''espresso_doppio'', ''espresso_macchiato'',
+        ''latte_macchiato'', ''cappuccino'', ''milk_coffee'', ''americano'', ''caffe_latte'',
+        ''flat_white'', ''cortado'', ''ristretto'', ''cafe_au_lait'']) }}'
+    - wait_template: '{{ is_state(''sensor.kaffeevollautomat_betriebszustand'',''run'')
+        }}'
+      timeout: 00:00:30
+      continue_on_timeout: false
+    - wait_template: '{{ not is_state(''sensor.kaffeevollautomat_betriebszustand'',''run'')
+        }}'
+      timeout: 00:08:00
+      continue_on_timeout: false
+    - condition: template
+      value_template: '{{ states(''sensor.kaffeevollautomat_betriebszustand'') in
+        [''ready'',''finished''] }}'
+    - condition: template
+      value_template: '{{ as_timestamp(now()) - (state_attr(''input_datetime.tassenerkennung_letzter_kaffee'',''timestamp'')
+        | float(0)) > 5 }}'
+    - action: input_datetime.set_datetime
+      target:
+        entity_id: input_datetime.tassenerkennung_letzter_kaffee
+      data:
+        timestamp: '{{ as_timestamp(now()) }}'
+  - conditions: '{{ trigger.id == ''licht_hinweis'' }}'
+    sequence:
+    - condition: time
+      after: 06:00:00
+      before: '16:00:00'
+    - condition: template
+      value_template: "{% set last_ts = state_attr('input_datetime.tassenerkennung_letzter_kaffee','timestamp')\
+        \ | float(0) %} {% set last = as_datetime(last_ts, none) %} {{ last_ts > 0\
+        \ and last is not none and as_local(last).date() == now().date()\n  and 0\
+        \ <= as_timestamp(now()) - as_timestamp(trigger.event.data.get('bildzeitpunkt'),0)\
+        \ <= 3\n  and state_attr('sensor.tassenerkennung_status','maschine') is mapping\n\
+        \  and state_attr('sensor.tassenerkennung_status','maschine').get('confirmed',false)\
+        \ }}"
+    - action: switch.turn_on
+      target:
+        entity_id:
+        - switch.kueche_schrankbeleuchtung_links
+        - switch.kueche_schrankbeleuchtung_rechts
+  - conditions: '{{ trigger.id == ''kuechen_praesenz'' }}'
+    sequence:
+    - condition: time
+      after: 06:00:00
+      before: '16:00:00'
+    - condition: template
+      value_template: "{% set last_ts = state_attr('input_datetime.tassenerkennung_letzter_kaffee','timestamp') | float(0) %} {% set last = as_datetime(last_ts, none) %} {{ last_ts > 0 and last is not none and as_local(last).date() == now().date() }}"
+    - action: switch.turn_on
+      target:
+        entity_id:
+        - switch.kueche_schrankbeleuchtung_links
+        - switch.kueche_schrankbeleuchtung_rechts
+  default:
+  - condition: template
+    value_template: '{{ trigger is defined and trigger.id == ''neue_tasse'' }}'
+  - condition: time
+    after: 06:00:00
+    before: '16:00:00'
+  - variables:
+      platzierung: '{{ state_attr(''binary_sensor.tassenerkennung_tasse_unter_dem_auslauf'',''neu_eingestellt_am'')
+        | string }}'
+  - condition: template
+    value_template: "{% set last_ts = state_attr('input_datetime.tassenerkennung_letzter_kaffee','timestamp')\
+      \ | float(0) %} {% set last = as_datetime(last_ts, none) %} {{ last_ts > 0 and\
+      \ last is not none and as_local(last).date() == now().date()\n  and as_timestamp(platzierung,0)\
+      \ > as_timestamp(last,0)\n  and platzierung != states('input_text.tassenerkennung_letzte_nachbestellung')\n\
+      \  and 0 <= as_timestamp(now())-as_timestamp(platzierung,0) <= 8 }}"
+  - condition: template
+    value_template: "{{ is_state('binary_sensor.tassenerkennung_tasse_unter_dem_auslauf','on')\n\
+      \  and state_attr('binary_sensor.tassenerkennung_tasse_unter_dem_auslauf','aktuell_bestaetigt')\
+      \ == true\n  and state_attr('sensor.tassenerkennung_status','bild_aktuell')\
+      \ == true\n  and 0 <= as_timestamp(now())-as_timestamp(state_attr('binary_sensor.tassenerkennung_tasse_unter_dem_auslauf','bildzeitpunkt'),0)\
+      \ <= 3\n  and state_attr('sensor.tassenerkennung_status','maschine') is mapping\n\
+      \  and state_attr('sensor.tassenerkennung_status','maschine').get('confirmed',false)\n\
+      \  and is_state('switch.kueche_schrankbeleuchtung_links','on')\n  and is_state('switch.kueche_schrankbeleuchtung_rechts','on')\
+      \ }}"
+  - condition: state
+    entity_id: automation.eine_tasse_kaffee
+    state: 'on'
+  - condition: state
+    entity_id: automation.eine_tasse_kaffee
+    attribute: current
+    state: 0
+  - condition: template
+    value_template: '{{ states(''sensor.kaffeevollautomat_betriebszustand'') in [''inactive'',''ready'',''finished'']
+      }}'
+  - choose:
+    - conditions: '{{ now().hour < 15 }}'
+      sequence:
+      - condition: state
+        entity_id: sensor.tassenerkennung_bechertyp
+        state: kaffeetasse
+      - condition: template
+        value_template: '{{ state_attr(''sensor.tassenerkennung_bechertyp'',''aktuell_bestaetigt'')
+          == true }}'
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.tassenerkennung_letzte_nachbestellung
+        data:
+          value: '{{ platzierung }}'
+      - action: automation.trigger
+        target:
+          entity_id: automation.eine_tasse_kaffee
+        data:
+          skip_condition: false
+      - action: logbook.log
+        data:
+          name: Tassenerkennung
+          message: 'Neue Kaffeetasse nach Kaffeeabschluss heute: einmaligen sicheren
+            Kaffeeablauf angefordert.'
+          entity_id: input_text.tassenerkennung_letzte_nachbestellung
+    default:
+    - condition: state
+      entity_id: switch.kaffeevollautomat_einschalter
+      state: 'off'
+    - condition: state
+      entity_id: binary_sensor.kaffeevollautomat_konnektivitat
+      state: 'on'
+    - condition: state
+      entity_id: binary_sensor.kaffeevollautomat_fernstart
+      state: 'on'
+    - condition: state
+      entity_id: binary_sensor.kaffeevollautomat_lokale_steuerung
+      state: 'off'
+    - condition: state
+      entity_id: switch.kaffeevollautomat_kindersicherung
+      state: 'off'
+    - action: input_text.set_value
+      target:
+        entity_id: input_text.tassenerkennung_letzte_nachbestellung
+      data:
+        value: '{{ platzierung }}'
+    - action: switch.turn_on
+      target:
+        entity_id: switch.kaffeevollautomat_einschalter
+    - action: logbook.log
+      data:
+        name: Tassenerkennung
+        message: 'Neue Tasse zwischen 15 und 16 Uhr: Maschine eingeschaltet, kein Getränk gestartet.'
+        entity_id: input_text.tassenerkennung_letzte_nachbestellung
+mode: parallel
+max: 3
+max_exceeded: silent

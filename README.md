@@ -26,6 +26,7 @@ The project detects whether a vessel is positioned below the outlet, keeps stale
 - `custom_components/tassenerkennung/` — Home Assistant integration 0.7.0.
 - `addon/` — local Supervisor app 0.4.1 with the model and responsive sidebar UI.
 - `tests/` — local safety, geometry, tracking, learner and HTTP tests.
+- `examples/nachbestellung-6-15.yaml` — Marcel's reviewed external Home Assistant automation: after a completed coffee that day, a newly placed confirmed coffee cup requests the existing safe coffee automation from 06:00–14:59; from 15:00–15:59 it only powers on an off machine. Adapt every entity before use.
 
 ## Installation
 
@@ -54,7 +55,7 @@ Add the replacement camera to Home Assistant first. In the Tassenerkennung sideb
 
 Recognition is intentionally unavailable when the image is stale, the camera is offline, alignment is not trustworthy, the target area is blocked, the training mode is active, or too few distinct observations exist. A held UI label never grants permission to an automation.
 
-If you build a beverage automation, require at least:
+The integration and app never start a beverage themselves. The optional example automation is deliberately external and **can request a beverage** through an existing Home Assistant automation. Review and adapt it before importing. A beverage automation must require at least:
 
 - a current positive vessel sensor;
 - a freshly confirmed matching vessel type;
