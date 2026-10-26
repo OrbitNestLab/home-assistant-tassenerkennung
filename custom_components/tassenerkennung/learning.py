@@ -29,7 +29,7 @@ STAGE_LABELS = {
     "empty": "Abstellfläche leeren und Aufnahme drücken",
     "front": "Becher mittig aufstellen und Aufnahme drücken",
     "rotated": "Becher etwa eine Vierteldrehung drehen und Aufnahme drücken",
-    "offset": "Becher leicht versetzt unter den Auslauf stellen und Aufnahme drücken",
+    "offset": "Becher zurückdrehen oder Henkel anders ausrichten · mittig unter dem Auslauf lassen",
     "review": "Aufnahmen geprüft · Profil kann gespeichert werden",
     "error": "Aufnahme fehlgeschlagen",
 }
@@ -66,6 +66,9 @@ class LearningManager:
         self.selected = "Kaffeetasse"
         self.new_name = ""
         self.session: LearningSession | None = None
+        self.busy=False
+        self.progress=0
+        self.timeout_cancel=None
 
     @property
     def active(self):
@@ -122,6 +125,7 @@ class LearningManager:
                     if self.coordinator.hass.states.get(entity) else "unknown"
                     for entity in self.coordinator.lights}
         self.session = LearningSession(profile_id, name, previous_lights=previous)
+        self._reset_timeout()
         self.coordinator.engine.confirmation.reset()
         self.coordinator.engine.last_positive = None
         if self.coordinator.engine.profiles:
@@ -132,12 +136,20 @@ class LearningManager:
             await asyncio.sleep(3)
             await self.coordinator.async_request_refresh()
         except Exception as error:
-            self.session.error = "Arbeitsflächenlicht oder Kamerabild nicht verfügbar"
-            self._notify()
-            raise ValueError(self.session.error) from error
+            await self.cancel()
+            raise ValueError("Arbeitsflächenlicht oder Kamerabild nicht verfügbar. Bitte Verbindung prüfen und erneut starten.") from error
         self._notify()
 
-    async def cancel(self):
+    def _reset_timeout(self):
+        if self.timeout_cancel:self.timeout_cancel()
+        from homeassistant.helpers.event import async_call_later
+        async def expire(_):
+            if self.busy:self._reset_timeout();return
+            await self.cancel()
+        self.timeout_cancel=async_call_later(self.coordinator.hass,900,expire)
+
+    async def cancel(self,refresh=True):
+        if self.timeout_cancel:self.timeout_cancel();self.timeout_cancel=None
         session = self.session
         self.session = None
         self.coordinator.engine.confirmation.reset()
@@ -149,15 +161,16 @@ class LearningManager:
             if turn_off:
                 await self.coordinator.hass.services.async_call(
                     "switch", "turn_off", {"entity_id": turn_off}, blocking=True)
-        await self.coordinator.async_request_refresh()
+        if refresh:await self.coordinator.async_request_refresh()
         self._notify()
 
     async def _collect(self, expect_empty: bool):
         observations, samples, seen = [], [], set()
-        active = (shifted_settings(self.coordinator.settings, self.coordinator.reference)
+        active = getattr(self.coordinator,'active_settings',None) or (shifted_settings(self.coordinator.settings, self.coordinator.reference)
                   if self.coordinator.reference and self.coordinator.reference.get("landmarks")
                   else self.coordinator.settings)
-        for _ in range(12):
+        self.progress=0;self._notify()
+        for _ in range(24):
             await self.coordinator.async_request_refresh()
             data = self.coordinator.data
             observation = data.get("observation")
@@ -169,7 +182,11 @@ class LearningManager:
             if not observation.alignment.ok:
                 raise ValueError("Kameraausrichtung ist nicht sicher")
             cups = [item for item in observation.detections
-                    if item.class_id == 41 and item.in_zone(active.zone, observation.image_size)]
+                    if item.class_id in {39,40,41} and item.in_zone(active.zone, observation.image_size)]
+            outlet=getattr(self.coordinator,'tracking_info',{}).get('canonical_outlet')
+            if outlet:
+                pour_x=(outlet[0]+outlet[2])/2
+                cups=[d for d in cups if d.box[0]+(d.box[2]-d.box[0])*.08<=pour_x<=d.box[2]-(d.box[2]-d.box[0])*.08]
             zone = active.zone.pixels(observation.image_size)
             blocked = any(item.class_id == 0 and covers_zone(item.box, zone) > .1
                           for item in observation.detections)
@@ -182,6 +199,7 @@ class LearningManager:
             observations.append(observation)
             image = open_image(self.coordinator.latest_content)
             samples.append(self.coordinator.engine.profiles.extract_sample(image, active))
+            self.progress=len(samples);self._notify()
             if self.session and self.session.source_size is None:
                 self.session.source_size=list(image.size)
             if len(observations) >= 3:
@@ -190,11 +208,14 @@ class LearningManager:
         raise ValueError("Die Kamera hat nicht genügend neue Bilder geliefert")
 
     async def capture(self):
+        if self.busy:raise ValueError('Eine Aufnahme läuft bereits')
         if not self.session:
             raise ValueError("Bitte zuerst den Einlernmodus starten")
         if self.session.stage not in {"empty", "front", "rotated", "offset"}:
             raise ValueError("In diesem Schritt ist keine Aufnahme vorgesehen")
         self.session.error = None
+        self._reset_timeout()
+        self.busy=True;self._notify()
         try:
             samples = await self._collect(self.session.stage == "empty")
             if self.session.stage == "empty":
@@ -209,6 +230,9 @@ class LearningManager:
             self.session.error = str(error)
             self._notify()
             raise
+        finally:
+            self.busy=False
+            self._notify()
         self._notify()
 
     def _validate_candidate(self):
@@ -217,6 +241,10 @@ class LearningManager:
             raise ValueError("Es fehlen unterschiedliche Aufnahmen des Bechers")
         arrays = [np.asarray(sample, dtype=np.float32) / 255 for sample in session.samples]
         profiles = self.coordinator.engine.profiles
+        if profiles.data.get('version',2)>=3:
+            empty=np.median(np.stack([np.asarray(a,np.float32)/255 for a in session.empty_samples]),axis=0)
+            if any(profiles._foreground(a,empty)[0].sum()<30 for a in arrays):
+                raise ValueError('Der Becher hebt sich nicht deutlich genug von der leeren Fläche ab')
         # Each view must be sufficiently informative. Similarity to a different known
         # profile is rejected unless the user deliberately extends that same profile.
         if any(float(array.mean()) < .045 or float(array.std()) < .025 for array in arrays):
@@ -224,7 +252,7 @@ class LearningManager:
         for profile_id, known in profiles.samples.items():
             if profile_id in {session.profile_id, "leer"}:
                 continue
-            best = max((profiles.similarity(candidate, reference)[0]
+            best = max(((profiles.appearance_score(candidate,reference,empty) if profiles.data.get('version',2)>=3 else profiles.similarity(candidate, reference)[0])
                         for candidate in arrays for reference in known), default=0)
             if best >= .985:
                 raise ValueError(f"Der Becher ist dem Profil „{profiles.display_name(profile_id)}“ zu ähnlich")
@@ -238,6 +266,7 @@ class LearningManager:
         await self.backup_store.async_save(previous)
         if profiles.data.get('camera') != self.coordinator.settings.camera or profiles.data.get('source_size') != self.session.source_size:
             profiles.reset_for_camera(self.coordinator.settings.camera,self.session.source_size,self.session.empty_samples)
+        profiles.set_empty(self.session.empty_samples)
         profiles.add_samples(self.session.profile_id, self.session.name, self.session.samples)
         payload = profiles.export()
 

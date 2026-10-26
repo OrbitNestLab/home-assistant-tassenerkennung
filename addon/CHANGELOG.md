@@ -1,3 +1,15 @@
+# App 0.4.1
+
+Maschine und Auslauf werden automatisch lokalisiert, perspektivisch stabilisiert und als vergrößerter kanonischer Prüfbereich verarbeitet. Die Oberfläche zeigt beobachtbare Hintergrundaufträge für Einrichtung, Kamerawechsel und Einlernen statt langer blockierender Browseranfragen. Der Kameraschnellwechsel führt durch Vorschau, automatische Ausrichtung und anschließendes Neueinlernen der benötigten Becherprofile.
+
+# App 0.4.0
+
+Neue Profil-v3-Auswertung mit Leerflächenabzug, Form-/Farbvergleich und Abstand zum zweitbesten Profil. Quell-, Tracking- und Prüfbild sind getrennt abrufbar; Maschinenfront und Auslauf werden unabhängig geprüft.
+
+# App 0.3.3
+
+Behebt den nachgewiesenen Ausfall aller App-Aktionen hinter Home Assistant Ingress: POST-Anfragen werden gepuffert statt als Datenstrom weitergeleitet, damit der JSON-Handler eine feste Nachrichtenlänge erhält. Anfragen ohne Längenfeld werden ausdrücklich als Übertragungsfehler gemeldet. Aktionsfehler werden nicht mehr pauschal als fehlende Home-Assistant-Verbindung dargestellt.
+
 # App 0.3.2
 
 Ingress-Aufrufe für Status, Aktionen und Kamerabilder werden relativ zum tatsächlichen Ingress-Pfad zusammengesetzt. Das funktioniert auch, wenn Home Assistant die App-URL ohne abschließenden Schrägstrich öffnet.

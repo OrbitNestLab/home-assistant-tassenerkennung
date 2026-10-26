@@ -24,7 +24,11 @@ class CupStatus(CupEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         observation = self.coordinator.data.get("observation")
-        return {"version": "0.6.0", "bildzeitpunkt": self.coordinator.data.get("captured_at"),
+        return {"version": "0.7.0", "bildzeitpunkt": self.coordinator.data.get("captured_at"),
+                "maschine":self.coordinator.tracking_info,
+                "becher_hinweis":bool(self.coordinator.tracking_info.get('becher_hinweis')),
+                "kamera":self.coordinator.settings.camera,
+                "profile":self.coordinator.engine.profiles.profile_details(self.coordinator.settings.camera),
                 "bild_aktuell": self.coordinator.fresh, "referenz_vorhanden": self.coordinator.reference is not None,
                 "positionsaehnlichkeit": round(observation.alignment.similarity, 3) if observation else None,
                 "verschiebung_in_pruefpixeln": list(observation.alignment.shift) if observation else None,
@@ -80,6 +84,8 @@ class CupType(CupEntity, SensorEntity):
     def extra_state_attributes(self):
         observation = self.coordinator.data.get("observation")
         return {"bildzeitpunkt": self.coordinator.data.get("captured_at"),
+                "vergleichswerte":self.coordinator.engine.profiles.last_scores,
+                "ablehnungsgrund":self.coordinator.engine.profiles.rejection_reason,
                 "vergleichswert": round(observation.vessel_similarity*100, 1) if observation else None,
                 "platzierung": observation.vessel_episode if observation and self.coordinator.fresh else None,
                 "bestaetigungsdauer_sekunden": self.coordinator.engine.profiles.duration_for(observation.vessel_type) if observation and self.coordinator.engine.profiles else None,
@@ -101,6 +107,9 @@ class LearningStatus(CupEntity, SensorEntity):
     def extra_state_attributes(self):
         learning = self.coordinator.learning
         return {"schritt": learning.stage,
+                "aufnahmelauf":learning.busy,
+                "teilaufnahmen":learning.progress,
+                "fehler":learning.session.error if learning.session else None,
                 "profil": learning.session.name if learning.session else learning.selected,
                 "aufnahmen": len(learning.session.samples) if learning.session else 0,
                 "benoetigte_aufnahmen": 9,

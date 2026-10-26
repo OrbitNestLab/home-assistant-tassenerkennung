@@ -15,4 +15,4 @@ class CupEntity(CoordinatorEntity):
         self._attr_name = name
         self._attr_icon = icon
         self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            name="Tassenerkennung", manufacturer="Lokale Bildauswertung", model="Eve Cam · lokale Prüfung", sw_version=VERSION)
+            name="Tassenerkennung", manufacturer="Lokale Bildauswertung", model="Lokale Kamera · lernbare Becher", sw_version=VERSION)

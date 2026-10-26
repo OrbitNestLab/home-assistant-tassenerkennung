@@ -150,6 +150,12 @@ class Detector:
         options.inter_op_num_threads = 1
         self.session = ort.InferenceSession(str(path), sess_options=options, providers=["CPUExecutionProvider"])
         self.input_size = self.session.get_inputs()[0].shape[-1]
+        model_input=self.session.get_inputs()[0]
+        self.input_name=model_input.name
+        shape=model_input.shape
+        self.input_height,self.input_width=int(shape[-2]),int(shape[-1])
+        if min(self.input_height,self.input_width)<128 or max(self.input_height,self.input_width)>1280:
+            raise ValueError('unsupported_model_input')
         self.grids, self.strides = [], []
         for stride in (8, 16, 32):
             y, x = np.meshgrid(np.arange(self.input_size//stride), np.arange(self.input_size//stride), indexing="ij")
@@ -166,22 +172,25 @@ class Detector:
         padded = np.full((self.input_size, self.input_size, 3), 114, dtype=np.uint8)
         padded[:resized.shape[0], :resized.shape[1]] = resized
         tensor = np.ascontiguousarray(padded.transpose(2, 0, 1)[None], dtype=np.float32)
-        output = self.session.run(None, {"images": tensor})[0][0].copy()
+        output = self.session.run(None, {self.input_name: tensor})[0][0].copy()
         output[:, :2] = (output[:, :2] + self.grids) * self.strides
         output[:, 2:4] = np.exp(np.clip(output[:, 2:4], -20, 20)) * self.strides
         scores = output[:, 4, None] * output[:, 5:]
         classes, best = scores.argmax(axis=1), scores.max(axis=1)
         # Person detection is retained as an occlusion warning; other objects cannot pass as cups.
-        indices = np.where(((classes == 41) | (classes == 0)) & (best >= settings.confidence))[0]
+        indices = np.where(np.isin(classes, [0,39,40,41]) & (best >= settings.confidence))[0]
         found = []
         for index in sorted(indices, key=lambda i: float(best[i]), reverse=True):
             cx, cy, bw, bh = output[index, :4] / ratio
             bx1, by1, bx2, by2 = cx-bw/2, cy-bh/2, cx+bw/2, cy+bh/2
             # Reject boxes clipped by the crop or too small to assess.
-            if bx1 < 1 or by1 < 1 or bx2 > w-1 or by2 > h-1 or bw < 10 or bh < 12:
+            if int(classes[index])==0:
+                bx1,by1,bx2,by2=max(0,bx1),max(0,by1),min(w,bx2),min(h,by2)
+                if bx2-bx1<6 or by2-by1<6:continue
+            elif bx1 < 1 or by1 < 1 or bx2 > w-1 or by2 > h-1 or bw < 10 or bh < 12:
                 continue
             det = Detection((float(bx1+left), float(by1+top), float(bx2+left), float(by2+top)), float(best[index]), int(classes[index]))
-            if not any(d.class_id == det.class_id and iou(d.box, det.box) > .45 for d in found):
+            if not any((d.class_id == det.class_id or (d.class_id in {39,40,41} and det.class_id in {39,40,41})) and iou(d.box, det.box) > .45 for d in found):
                 found.append(det)
         return found
 

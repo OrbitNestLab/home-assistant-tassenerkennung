@@ -43,3 +43,24 @@ class LocalDetector:
         with opener.open(request,timeout=12) as response:result=json.load(response)
         if result.get("protocol")!=2:raise ValueError("camera_backend_protocol")
         return result["registration"]
+
+    def track_machine(self, content, reference, settings, previous=None):
+        payload={'reference':reference,'image':base64.b64encode(content).decode(),
+                 'anchor':list(settings.anchor.tuple),'previous':previous}
+        request=urllib.request.Request(self.url+'/track',data=json.dumps(payload).encode(),
+            headers={'Authorization':'Bearer '+self.token,'Content-Type':'application/json'})
+        opener=urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open(request,timeout=10) as response:result=json.load(response)
+        if result.get('protocol')!=3:raise ValueError('tracking_backend_protocol')
+        return result
+
+    def setup_machine(self,reference,body):
+        request=urllib.request.Request(self.url+'/machine-setup',data=json.dumps({'reference':reference,'body':body}).encode(),
+            headers={'Authorization':'Bearer '+self.token,'Content-Type':'application/json'})
+        opener=urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        try:
+            with opener.open(request,timeout=15) as response:result=json.load(response)
+        except urllib.error.HTTPError as error:
+            raise ValueError('Der Auslauf konnte im markierten Maschinenrahmen nicht erkannt werden. Bitte enger markieren und beide Düsen sichtbar lassen.') from error
+        if result.get('protocol')!=4:raise ValueError('setup_backend_protocol')
+        return result['model']

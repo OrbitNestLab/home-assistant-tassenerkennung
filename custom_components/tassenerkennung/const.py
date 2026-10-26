@@ -1,10 +1,10 @@
 """Configuration for local cup recognition."""
 
 DOMAIN = "tassenerkennung"
-VERSION = "0.6.0"
-MODEL_SHA256 = "427cc366d34e27ff7a03e2899b5e3671425c262ea2291f88bb942bc1cc70b0f7"
+VERSION = "0.7.0"
+MODEL_SHA256 = "c5c2d13e59ae883e6af3b45daea64af4833a4951c92d116ec270d9ddbe998063"
 DEFAULTS = {
-    "camera": "camera.coffee_station",
+    "camera": "camera.eve_cam_07b0",
     "interval": 1,
     "confidence": 0.75,
     "confirmations": 5,

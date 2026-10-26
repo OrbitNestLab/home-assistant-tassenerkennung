@@ -26,7 +26,8 @@ def rectify(content,reference):
     matrix=matrix/matrix[2,2]
     if np.linalg.det(matrix)<=0:raise ValueError('invalid_camera_transform')
     with Image.open(BytesIO(content)) as source:
-        if list(source.size)!=reference['source_size']:raise ValueError('camera_resolution_changed')
+        if list(source.size)!=reference['source_size'] and not reference.get('machine_model'):
+            raise ValueError('camera_resolution_changed')
         image=source.convert('RGB').transform(tuple(reference['source_size']),Image.Transform.PERSPECTIVE,
             tuple(matrix.flat)[:8],Image.Resampling.BILINEAR)
         output=BytesIO();image.save(output,format='JPEG',quality=96)

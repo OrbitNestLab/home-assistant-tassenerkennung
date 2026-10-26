@@ -153,9 +153,15 @@ class Detector:
         options.intra_op_num_threads = 2
         options.inter_op_num_threads = 1
         self.session = ort.InferenceSession(str(path), sess_options=options, providers=["CPUExecutionProvider"])
+        model_input=self.session.get_inputs()[0]
+        self.input_name=model_input.name
+        shape=model_input.shape
+        self.input_height,self.input_width=int(shape[-2]),int(shape[-1])
+        if min(self.input_height,self.input_width)<128 or max(self.input_height,self.input_width)>1280:
+            raise ValueError('unsupported_model_input')
         self.grids, self.strides = [], []
         for stride in (8, 16, 32):
-            y, x = np.meshgrid(np.arange(416//stride), np.arange(416//stride), indexing="ij")
+            y, x = np.meshgrid(np.arange(self.input_height//stride), np.arange(self.input_width//stride), indexing="ij")
             self.grids.append(np.stack((x, y), axis=-1).reshape(-1, 2))
             self.strides.append(np.full((x.size, 1), stride))
         self.grids, self.strides = np.concatenate(self.grids), np.concatenate(self.strides)
@@ -164,27 +170,30 @@ class Detector:
         left, top, right, bottom = settings.crop.pixels(image.size)
         crop = image.crop((left, top, right, bottom))
         w, h = crop.size
-        ratio = min(416/w, 416/h)
+        ratio = min(self.input_width/w, self.input_height/h)
         resized = np.asarray(crop.resize((max(1, int(w*ratio)), max(1, int(h*ratio))), Image.Resampling.BILINEAR))[:, :, ::-1]
-        padded = np.full((416, 416, 3), 114, dtype=np.uint8)
+        padded = np.full((self.input_height, self.input_width, 3), 114, dtype=np.uint8)
         padded[:resized.shape[0], :resized.shape[1]] = resized
         tensor = np.ascontiguousarray(padded.transpose(2, 0, 1)[None], dtype=np.float32)
-        output = self.session.run(None, {"images": tensor})[0][0].copy()
+        output = self.session.run(None, {self.input_name: tensor})[0][0].copy()
         output[:, :2] = (output[:, :2] + self.grids) * self.strides
         output[:, 2:4] = np.exp(np.clip(output[:, 2:4], -20, 20)) * self.strides
         scores = output[:, 4, None] * output[:, 5:]
         classes, best = scores.argmax(axis=1), scores.max(axis=1)
         # Person detection is retained as an occlusion warning; other objects cannot pass as cups.
-        indices = np.where(((classes == 41) | (classes == 0)) & (best >= settings.confidence))[0]
+        indices = np.where(np.isin(classes, [0,39,40,41]) & (best >= settings.confidence))[0]
         found = []
         for index in sorted(indices, key=lambda i: float(best[i]), reverse=True):
             cx, cy, bw, bh = output[index, :4] / ratio
             bx1, by1, bx2, by2 = cx-bw/2, cy-bh/2, cx+bw/2, cy+bh/2
             # Reject boxes clipped by the crop or too small to assess.
-            if bx1 < 1 or by1 < 1 or bx2 > w-1 or by2 > h-1 or bw < 10 or bh < 12:
+            if int(classes[index])==0:
+                bx1,by1,bx2,by2=max(0,bx1),max(0,by1),min(w,bx2),min(h,by2)
+                if bx2-bx1<6 or by2-by1<6:continue
+            elif bx1 < 1 or by1 < 1 or bx2 > w-1 or by2 > h-1 or bw < 10 or bh < 12:
                 continue
             det = Detection((float(bx1+left), float(by1+top), float(bx2+left), float(by2+top)), float(best[index]), int(classes[index]))
-            if not any(d.class_id == det.class_id and iou(d.box, det.box) > .45 for d in found):
+            if not any((d.class_id == det.class_id or (d.class_id in {39,40,41} and det.class_id in {39,40,41})) and iou(d.box, det.box) > .45 for d in found):
                 found.append(det)
         return found
 
@@ -280,13 +289,13 @@ class Vision:
         self.last_positive = None
         self.profiles = None
 
-    def evaluate(self, content, reference, timestamp=None):
+    def evaluate(self, content, reference, timestamp=None, alignment_override=None, active_override=None, learning=False):
         started = time.monotonic()
         image = open_image(content)
         from .tracking import locate, shifted_settings
         stamp = timestamp if timestamp is not None else time.monotonic()
-        alignment = locate(image, self.settings, reference) if reference and reference.get("landmarks") else check_alignment(image, self.settings, reference)
-        active = shifted_settings(self.settings, reference) if reference and reference.get("landmarks") else self.settings
+        alignment = alignment_override or (locate(image, self.settings, reference) if reference and reference.get("landmarks") else check_alignment(image, self.settings, reference))
+        active = active_override or (shifted_settings(self.settings, reference) if reference and reference.get("landmarks") else self.settings)
         region = np.asarray(image.crop(active.crop.pixels(image.size)).convert("L"))
         if region.std() < 8 or np.percentile(region, 95) < 24:
             alignment = Alignment(False, "Bild zu dunkel oder verdeckt")
@@ -298,7 +307,11 @@ class Vision:
             observation.inference_ms=(time.monotonic()-started)*1000
             return observation,jpeg
         detections = self.detector.detect(image, active)
-        cups = [d for d in detections if d.class_id == 41 and d.in_zone(active.zone, image.size)]
+        cups = [d for d in detections if d.class_id in {39,40,41} and d.in_zone(active.zone, image.size)]
+        outlet=(reference or {}).get('machine_model',{}).get('outlet')
+        if outlet:
+            pour_x=(outlet[0]+outlet[2])/2
+            cups=[d for d in cups if d.box[0]+(d.box[2]-d.box[0])*.08<=pour_x<=d.box[2]-(d.box[2]-d.box[0])*.08]
         zone = active.zone.pixels(image.size)
         blocked = any(d.class_id == 0 and covers_zone(d.box, zone) > .1 for d in detections)
         allowed = alignment.ok and not blocked and len(cups) == 1 and cups[0].score >= self.settings.confidence
@@ -323,9 +336,9 @@ class Vision:
             status, value = "Tasse wird geprüft", False
         observation = Observation(value, status, max((d.score for d in cups), default=0), self.confirmation.count,
                                   detections, alignment, image.size, (time.monotonic()-started)*1000, present, held, alignment.ok and not blocked and not cups)
-        if self.profiles:
+        if self.profiles and not learning:
             label, similarity, episode = self.profiles.evaluate(image, active, stamp,
-                alignment.ok and not blocked and len(cups)<=1)
+                alignment.ok and not blocked and len(cups)<=1,has_vessel=len(cups)==1)
             observation.vessel_type, observation.vessel_similarity, observation.vessel_episode = label, similarity, episode
             observation.vessel_current_confirmed=self.profiles.current_confirmed
             observation.vessel_held=self.profiles.held
@@ -350,7 +363,7 @@ def render(image, settings, observation=None, message=None):
     draw.rectangle(box(settings.zone.pixels(image.size)), outline="#7fa7c5", width=2)
     if observation and not message:
         for detection in observation.detections:
-            if detection.class_id != 41:
+            if detection.class_id not in {39,40,41}:
                 continue
             inside = detection.in_zone(settings.zone, image.size)
             color = "#61c99a" if inside and observation.current_confirmed else "#e1b567" if inside else "#93a3b6"

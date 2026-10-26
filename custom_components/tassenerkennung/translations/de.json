@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "Lokale Tassenerkennung",
-        "description": "Wähle die Kamera an der Kaffeemaschine. Die Bilder werden lokal ausgewertet. Die Integration steuert keine Kaffeemaschine. Die Bildbereiche kannst du anschließend in den Optionen anpassen.",
+        "description": "Wähle die Eve Cam. Die Bilder werden auf deinem HA-Server ausgewertet. Der Test steuert keine Kaffeemaschine. Die Bildbereiche kannst du anschließend in den Optionen anpassen.",
         "data": {
           "camera": "Quellkamera",
           "interval": "Prüfabstand in Sekunden",

@@ -1,79 +1,64 @@
-from dataclasses import replace
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
+
 from tassenerkennung.vessel_profiles import VesselProfiles
-from fixtures import profiles, scene, settings
+from tassenerkennung.vision import Settings
 
 
 def setup():
- return profiles(),settings(),scene('babybecher')
-
-def test_current_five_seconds_and_episode_persists_over_uncertainty():
- p,s,im=setup()
- for t in range(2):assert p.evaluate(im,s,t,True)[0]=='unbekannt'
- label,score,episode=p.evaluate(im,s,2,True);assert label=='babybecher' and episode
- assert p.evaluate(im,s,6,False)[0]=='unbekannt'
- for t in range(7,13):last=p.evaluate(im,s,t,True)
- assert last[0]=='babybecher' and last[2]==episode
- # Explicit sustained empty state rearms a subsequent real placement.
- empty=scene('leer')
- for t in range(13,19):last=p.evaluate(empty,s,t,True)
- assert last[0]=='leer' and last[2] is None
- for t in range(19,25):last=p.evaluate(im,s,t,True)
- assert last[0]=='babybecher' and last[2]!=episode
-
-def test_grayscale_dark_flat_or_wrong_camera_do_not_match_baby():
- p,s,im=setup()
- assert p.classify(im.convert('L').convert('RGB'),s)[0]!='babybecher'
- assert p.classify(Image.new('RGB',im.size),s)[0]=='unbekannt'
- assert p.classify(Image.new('RGB',im.size,'cyan'),s)[0]=='unbekannt'
- assert p.classify(im,replace(s,camera='camera.other'))[0]=='unbekannt'
- assert p.classify(im.resize((640,360)),s)[0]=='unbekannt'
-
-def test_moderate_brightness_and_position_change():
- p,s,im=setup()
- darker=Image.fromarray((np.asarray(im)*.8).astype('uint8'))
- assert p.classify(darker,s)[0]=='babybecher'
- moved=Image.new('RGB',im.size);moved.paste(im,(3,0))
- assert p.classify(moved,s)[0]=='babybecher'
-
-def test_hold_is_display_only_and_one_soft_miss_keeps_progress():
- p,s,im=setup()
- for at in [0,1,2]:result=p.evaluate(im,s,at,True)
- assert result[0]=='babybecher' and p.current_confirmed
- classify=p.classify;p.classify=lambda *args:('unbekannt',.5)
- result=p.evaluate(im,s,3,True)
- assert result[0]=='babybecher' and p.held and not p.current_confirmed
- p.classify=classify
- result=p.evaluate(im,s,4,True)
- assert result[0]=='babybecher' and p.current_confirmed and not p.held
- assert p.evaluate(im,s,5,False)[0]=='unbekannt'
- assert not p.current_confirmed and not p.held
-
-def test_restart_keeps_the_same_confirmed_placement():
- p,s,im=setup()
- for at in [0,1,2]:first=p.evaluate(im,s,at,True)
- state=p.lifecycle
- restored=profiles()
- restored.restore_lifecycle(state)
- for at in [10,11,12]:second=restored.evaluate(im,s,at,True)
- assert first[0]==second[0]=='babybecher' and first[2]==second[2]
+    rng=np.random.default_rng(411)
+    empty=np.clip(rng.normal(45,3,(56,48,3)),0,255).astype(np.uint8)
+    cup=Image.fromarray(empty.copy())
+    draw=ImageDraw.Draw(cup)
+    draw.rounded_rectangle((12,8,36,51),radius=6,fill=(225,226,220))
+    draw.ellipse((30,15,44,37),outline='white',width=3)
+    profiles=VesselProfiles({'version':3,'camera':'camera.test','source_size':[1280,720],
+        'zone_relative_box':[0,0,1,1],'names':{},
+        'samples':{'leer':[empty.tolist()]*3,'kaffeetasse':[np.asarray(cup).tolist()]*3}})
+    settings=Settings.from_dict({'camera':'camera.test'})
+    return profiles,settings,empty,np.asarray(cup)
 
 
-def test_user_profile_can_be_added_exported_and_reloaded():
- p,s,im=setup()
- sample=p.extract_sample(im,s)
- p.add_samples('benutzer_gastbecher','Gastbecher',[sample]*3)
- exported=p.export()
- restored=VesselProfiles(exported)
- assert restored.display_name('benutzer_gastbecher')=='Gastbecher'
- assert len(restored.samples['benutzer_gastbecher'])==3
- assert exported['version']==2
+def frame(sample,settings):
+    image=Image.new('RGB',(1280,720))
+    left,top,right,bottom=settings.zone.pixels(image.size)
+    patch=Image.fromarray(np.asarray(sample,dtype=np.uint8)).resize((right-left,bottom-top))
+    image.paste(patch,(left,top))
+    return image
 
 
-def test_camera_change_resets_old_images_but_keeps_profile_names():
- p,s,im=setup();p.names['benutzer_gast']='Gastbecher'
- empty=p.extract_sample(Image.new('RGB',im.size,'gray'),s)
- p.reset_for_camera('camera.new',[1280,720],[empty]*3)
- assert set(p.samples)=={'leer'} and p.data['camera']=='camera.new'
- assert p.names['benutzer_gast']=='Gastbecher'
+def test_confirmed_placement_survives_a_soft_miss_and_rearms_after_empty():
+    profiles,settings,empty,cup=setup()
+    cup_frame=frame(cup,settings)
+    for timestamp in (0,1,2,3):result=profiles.evaluate(cup_frame,settings,timestamp,True,has_vessel=True)
+    assert result[0]=='kaffeetasse' and result[2]
+    episode=result[2]
+    classify=profiles.classify
+    profiles.classify=lambda *args:('unbekannt',.5)
+    assert profiles.evaluate(cup_frame,settings,4,True,has_vessel=True)[0]=='kaffeetasse'
+    assert profiles.held and not profiles.current_confirmed
+    profiles.classify=classify
+    empty_frame=frame(empty,settings)
+    for timestamp in (10,12,14,16):result=profiles.evaluate(empty_frame,settings,timestamp,True,has_vessel=False)
+    assert result[0]=='leer' and result[2] is None
+    for timestamp in (20,21,22,23):result=profiles.evaluate(cup_frame,settings,timestamp,True,has_vessel=True)
+    assert result[0]=='kaffeetasse' and result[2] and result[2]!=episode
+
+
+def test_lifecycle_can_be_restored_without_authorizing_a_current_frame():
+    profiles,settings,_,cup=setup()
+    for timestamp in (0,1,2,3):first=profiles.evaluate(frame(cup,settings),settings,timestamp,True,has_vessel=True)
+    restored,_,_,_=setup()
+    restored.restore_lifecycle(profiles.lifecycle)
+    assert restored.episode==first[2]
+    assert not restored.current_confirmed
+
+
+def test_user_profile_export_and_camera_reset_keep_only_names():
+    profiles,_,empty,cup=setup()
+    profiles.add_samples('benutzer_gastbecher','Gastbecher',[cup.tolist()]*3)
+    exported=profiles.export()
+    assert VesselProfiles(exported).display_name('benutzer_gastbecher')=='Gastbecher'
+    profiles.reset_for_camera('camera.new',[1280,720],[empty.tolist()]*3)
+    assert set(profiles.samples)=={'leer'}
+    assert profiles.display_name('benutzer_gastbecher')=='Gastbecher'

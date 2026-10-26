@@ -77,4 +77,4 @@ class CupOptionsFlow(OptionsFlow):
                 errors["base"] = str(error)
             else:
                 return self.async_create_entry(title="", data=values)
-        return self.async_show_form(step_id="init", data_schema=schema(values, advanced=True, excluded=own_cameras(self.hass)), errors=errors)
+        return self.async_show_form(step_id="init", data_schema=schema(values, advanced=False, excluded=own_cameras(self.hass)), errors=errors)

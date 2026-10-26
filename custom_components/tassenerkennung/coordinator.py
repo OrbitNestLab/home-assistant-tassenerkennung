@@ -25,7 +25,7 @@ from .vessel_profiles import VesselProfiles
 from .camera_geometry import rectify
 from .learning import LearningManager
 
-LIGHTS = ["switch.coffee_station_light_1", "switch.coffee_station_light_2"]
+LIGHTS = ["switch.kueche_schrankbeleuchtung_links", "switch.kueche_schrankbeleuchtung_rechts"]
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -42,6 +42,13 @@ class CupCoordinator(DataUpdateCoordinator):
         self.lock = asyncio.Lock()
         self.expiry_cancel = None
         self.latest_content = None
+        self.raw_content = None
+        self.active_settings = self.settings
+        self.tracking_info = {}
+        self.tracking_count = 0
+        self.tracking_previous = None
+        self.tracking_last_body = None
+        self.candidate_hint = False
         self.last_capture = None
         self.last_capture_mono = None
         self.frame_hash = None
@@ -73,18 +80,30 @@ class CupCoordinator(DataUpdateCoordinator):
         detector = await self.hass.async_add_executor_job(LocalDetector, backend_config)
         self.engine = Vision(detector, self.settings)
         profile_path = Path(self.hass.config.path(".storage", "tassenerkennung.profile-references.json"))
+        needs_write=not await self.hass.async_add_executor_job(profile_path.exists)
         def load_profiles():
-            if not profile_path.exists(): return None
+            if not profile_path.exists():return VesselProfiles.empty(self.settings.camera)
             return VesselProfiles(json.loads(profile_path.read_text()))
         self.engine.profiles = await self.hass.async_add_executor_job(load_profiles)
-        if not self.engine.profiles:
-            raise HomeAssistantError("Becherprofile fehlen")
+        if self.engine.profiles.data.get('version',2)<3:
+            # Old templates were tied to the former fixed crop. Never silently
+            # authorize them against the new machine-relative geometry.
+            await self.profile_backup_store.async_save(self.engine.profiles.export())
+            self.engine.profiles=VesselProfiles.empty(self.settings.camera,names=self.engine.profiles.names)
+            needs_write=True
+        if needs_write:
+            def save_initial():
+                import os
+                temporary=profile_path.with_suffix('.initial.tmp')
+                temporary.write_text(json.dumps(self.engine.profiles.export(),ensure_ascii=False,separators=(',',':')))
+                os.chmod(temporary,0o600);os.replace(temporary,profile_path)
+            await self.hass.async_add_executor_job(save_initial)
         self.learning = LearningManager(self, profile_path, self.profile_backup_store)
         if self.engine.profiles:
             self.engine.profiles.restore_lifecycle(await self.vessel_store.async_load())
             self.saved_lifecycle=self.engine.profiles.lifecycle
         reference = await self.store.async_load()
-        if reference and reference.get("fingerprint") == self.settings.fingerprint:
+        if reference and (reference.get("fingerprint") == self.settings.fingerprint or reference.get("machine_model")):
             self.reference = reference
         tracking = await self.recovery_store.async_load() or {}
         self.recovery_state = tracking.get("status", "Bereit") if tracking.get("algorithm_version")==2 else "Bereit"
@@ -126,7 +145,9 @@ class CupCoordinator(DataUpdateCoordinator):
     @callback
     def _invalidate(self, message):
         self._cancel_expiry()
-        self.empty_confirmed = False
+        # A temporary dark/stale frame must not erase a previously verified
+        # empty tray. It is only an arming fact, never a beverage permission.
+        # A confirmed vessel, camera change or calibration clears it elsewhere.
         self.absent_since = None
         if self.engine:
             self.engine.confirmation.reset()
@@ -146,84 +167,23 @@ class CupCoordinator(DataUpdateCoordinator):
         return image.content
 
     async def _async_update_data(self):
+        from .pipeline import update
         async with self.lock:
             try:
-                update_started=time.monotonic()
-                content = await self._capture()
-                capture_ms=(time.monotonic()-update_started)*1000
-                captured_at, captured_mono = dt_util.utcnow(), time.monotonic()
-                digest = sha256(content).hexdigest()
-                if digest == self.frame_hash:
-                    # Cached JPEGs are not new observations and cannot build confirmations.
-                    if self.frame_changed_mono is None or captured_mono-self.frame_changed_mono > self.ttl:
-                        raise HomeAssistantError("Kamera liefert kein neues Bild")
-                    return self.data
-                self.frame_hash, self.frame_changed_mono = digest, captured_mono
-                if not all(self.hass.states.is_state(e,"on") for e in LIGHTS):
-                    self.engine.confirmation.reset();self.engine.last_positive=None
-                    if self.engine.profiles:self.engine.profiles.invalidate()
-                    self.failure_since=None;self.healthy_since=None
-                    self.absent_since=None;self.empty_confirmed=False
-                    self._cancel_expiry()
-                    self.last_capture,self.last_capture_mono=captured_at,captured_mono
-                    return {"observation":None,"status":"Arbeitsflächenlicht für Erkennung benötigt","jpeg":None,
-                            "captured_at":captured_at,"fresh":True,"error":None,"capture_ms":capture_ms}
-                await self._recover_if_needed(content, captured_mono)
-                if self.reference and self.reference.get("camera_transform"):
-                    content=await self.hass.async_add_executor_job(rectify,content,self.reference)
-                observation, jpeg = await self.hass.async_add_executor_job(
-                    self.engine.evaluate, content, self.reference, captured_mono)
-                if self.engine.profiles and self.engine.profiles.lifecycle != self.saved_lifecycle:
-                    await self.vessel_store.async_save(self.engine.profiles.lifecycle)
-                    self.saved_lifecycle=self.engine.profiles.lifecycle
-                # An inference longer than the freshness window cannot be a current observation.
-                if time.monotonic() - captured_mono > self.ttl:
-                    raise HomeAssistantError("Bildverarbeitung zu langsam")
-                source = self.hass.states.get(self.settings.camera)
-                if not source or source.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
-                    raise HomeAssistantError("Kamera nicht verfügbar")
-                self.latest_content = content
-                self.last_capture, self.last_capture_mono = captured_at, captured_mono
-                self._cancel_expiry()
-                self.expiry_cancel = async_call_later(self.hass, max(.1, self.ttl - (time.monotonic()-captured_mono)),
-                    lambda _: self._invalidate("Kamerabild veraltet"))
-                if observation.alignment.ok:
-                    self.failure_since = None
-                    if self.healthy_since is None: self.healthy_since = captured_mono
-                    if captured_mono-self.healthy_since >= 60 and self.recovery_state != "Bereit":
-                        await self._tracking_status("Bereit")
-                else:
-                    self.healthy_since = None
-                    if self.failure_since is None: self.failure_since = captured_mono
-                empty=observation.absent
-                if self.engine.profiles:
-                    empty=empty and observation.vessel_type=="leer" and observation.vessel_current_confirmed
-                if empty:
-                    if self.engine.profiles and self.engine.profiles.since is not None:
-                        self.absent_since=captured_at-timedelta(seconds=max(0,captured_mono-self.engine.profiles.since))
-                    elif self.absent_since is None:self.absent_since=captured_at
-                    if (captured_at-self.absent_since).total_seconds() >= 5:self.empty_confirmed=True
-                else:self.absent_since=None
-                if not observation.alignment.ok or observation.present is None:
-                    self.empty_confirmed = False
-                if observation.current_confirmed and self.empty_confirmed:
-                    self.placed_at = captured_at
-                    self.empty_confirmed = False
-                return {"observation": observation, "status": observation.status, "jpeg": jpeg,
-                        "captured_at": captured_at, "fresh": True, "error": None, "capture_ms":capture_ms,
-                        "total_ms":(time.monotonic()-update_started)*1000}
-            except Exception as error:  # A native-model error must also clear the previous positive result.
+                return await update(self)
+            except Exception as error:
                 self.engine.confirmation.reset()
                 self.engine.last_positive = None
-                if self.engine.profiles: self.engine.profiles.invalidate()
-                self.absent_since = None
-                self.empty_confirmed = False
-                if self.recovery_state == "Suche läuft" and self.recovery_started is not None and time.monotonic()-self.recovery_started >= 15:
-                    await self._tracking_status("fehlgeschlagen")
+                if self.engine.profiles:self.engine.profiles.invalidate()
+                self.tracking_info={"ok":False,"confirmed":False,"reason":type(error).__name__}
+                self.tracking_count=0
                 self._cancel_expiry()
-                _LOGGER.debug("Cup image unavailable: %s", type(error).__name__)
-                return {"observation": None, "status": "Kein auswertbares Kamerabild", "jpeg": None,
-                        "captured_at": self.last_capture, "fresh": False, "error": type(error).__name__}
+                messages={"camera_image_not_updating":"Kamera liefert derzeit kein neues Bild",
+                          "processing_too_slow":"Bildverarbeitung ist zu langsam"}
+                message=messages.get(str(error),"Kamerabild kann gerade nicht geprüft werden")
+                _LOGGER.debug("Cup pipeline unavailable: %s: %s",type(error).__name__,str(error)[:160])
+                return {"observation":None,"status":message,"jpeg":None,"raw_jpeg":self.raw_content,
+                        "captured_at":self.last_capture,"fresh":False,"error":type(error).__name__}
 
     async def _tracking_status(self, status):
         self.recovery_state = status
@@ -292,6 +252,13 @@ class CupCoordinator(DataUpdateCoordinator):
 
     async def async_confirm_position(self):
         """Only an explicit user action creates/replaces the position reference."""
+        if self.reference and self.reference.get('machine_model'):
+            self.tracking_previous=None;self.tracking_count=0
+            for _ in range(4):
+                await self.async_request_refresh()
+                if self.tracking_info.get('confirmed'):return
+                await asyncio.sleep(.7)
+            raise HomeAssistantError(self.data.get('status','Maschine konnte nicht bestätigt werden'))
         async with self.lock:
             content = await self._capture()
             transform=self.reference.get("camera_transform") if self.reference else None
@@ -313,7 +280,50 @@ class CupCoordinator(DataUpdateCoordinator):
             self.engine.last_positive = None
         await self.async_request_refresh()
 
+    async def async_calibrate_machine(self,body,rotation=0):
+        """Explicit visual setup after a camera swap; never reuse old cup permission."""
+        if self.learning.active:raise HomeAssistantError('Bitte den Einlernvorgang zuerst abbrechen')
+        from io import BytesIO
+        from PIL import Image
+        import os
+        from .camera_geometry import camera_context
+        async with self.lock:
+            content=await self._capture()
+            def build():
+                image=open_image(content)
+                if rotation==180:image=image.rotate(180)
+                reference={'fingerprint':self.settings.fingerprint,'source_size':list(image.size),
+                           'camera_context':camera_context(image,self.settings),'baseline_camera':self.settings.camera}
+                model=self.engine.detector.setup_machine(reference,body)
+                reference['machine_model']=model
+                reference['camera_transform']=[[-1,0,image.width-1],[0,-1,image.height-1],[0,0,1]] if rotation==180 else [[1,0,0],[0,1,0],[0,0,1]]
+                return reference
+            try:reference=await self.hass.async_add_executor_job(build)
+            except ValueError as error:raise HomeAssistantError(str(error)) from error
+            old_reference=self.reference;old_profiles=self.engine.profiles
+            previous=old_profiles.export();await self.profile_backup_store.async_save(previous)
+            payload={'version':3,'camera':self.settings.camera,'source_size':reference['source_size'],
+                     'zone_relative_box':[0,0,1,1],'names':dict(old_profiles.names),'samples':{'leer':[]},'automatic_beverages':False}
+            def write(value):
+                path=self.learning.profile_path;temporary=path.with_suffix('.calibration.tmp')
+                temporary.write_text(json.dumps(value,separators=(',',':'),ensure_ascii=False));os.chmod(temporary,0o600);os.replace(temporary,path)
+            self._invalidate('Maschinenreferenz wird eingerichtet')
+            try:
+                await self.hass.async_add_executor_job(write,payload)
+                await self.store.async_save(reference)
+            except Exception:
+                await self.hass.async_add_executor_job(write,previous)
+                if old_reference:await self.store.async_save(old_reference)
+                raise
+            self.reference=reference;self.engine.profiles=VesselProfiles(payload)
+            self.tracking_count=0;self.tracking_previous=None;self.tracking_last_body=None
+            self.empty_confirmed=False;self.absent_since=None;self.placed_at=None
+            self.saved_lifecycle=self.engine.profiles.lifecycle;await self.vessel_store.async_save(self.saved_lifecycle)
+            await self._tracking_status('Bereit')
+        await self.async_request_refresh()
+
     async def async_close(self):
+        if self.learning and self.learning.active:await self.learning.cancel(refresh=False)
         self._cancel_expiry()
         self.latest_content = None
         self.reference = None

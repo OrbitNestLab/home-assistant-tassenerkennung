@@ -1,5 +1,5 @@
 name: Tassenerkennung
-version: "0.3.2"
+version: "0.4.1"
 slug: tassenerkennung
 description: Selbständige lokale App zum Erkennen und Einlernen von Bechern. Keine direkten Getränkeaktionen.
 arch:
@@ -17,7 +17,8 @@ tmpfs: true
 homeassistant_api: true
 ingress: true
 ingress_port: 8080
-ingress_stream: true
+# The HTTP handler reads bounded JSON using Content-Length. Buffer Ingress POSTs.
+ingress_stream: false
 panel_icon: mdi:coffee-maker
 panel_title: Tassenerkennung
 panel_admin: true

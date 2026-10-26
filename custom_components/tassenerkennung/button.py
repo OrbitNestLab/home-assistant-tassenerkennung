@@ -4,8 +4,14 @@ import asyncio
 
 from homeassistant.components.button import ButtonEntity
 from homeassistant.const import EntityCategory
+from homeassistant.exceptions import HomeAssistantError
 
 from .entity import CupEntity
+
+
+async def learning_action(operation):
+    try:return await operation
+    except ValueError as error:raise HomeAssistantError(str(error)) from error
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -20,7 +26,7 @@ class CheckNow(CupEntity, ButtonEntity):
         super().__init__(coordinator, "check", "Jetzt prüfen", "mdi:refresh")
 
     async def async_press(self):
-        lights=self.coordinator.lights
+        lights=["switch.kueche_schrankbeleuchtung_links","switch.kueche_schrankbeleuchtung_rechts"]
         if not all(self.hass.states.is_state(e,"on") for e in lights):
             await self.hass.services.async_call("switch","turn_on",{"entity_id":lights},blocking=True)
             await asyncio.sleep(3)
@@ -34,7 +40,7 @@ class ConfirmPosition(CupEntity, ButtonEntity):
         super().__init__(coordinator, "position", "Ausrichtung bestätigen", "mdi:crosshairs-gps")
 
     async def async_press(self):
-        lights=self.coordinator.lights
+        lights=["switch.kueche_schrankbeleuchtung_links","switch.kueche_schrankbeleuchtung_rechts"]
         if not all(self.hass.states.is_state(e,"on") for e in lights):
             await self.hass.services.async_call("switch","turn_on",{"entity_id":lights},blocking=True)
             await asyncio.sleep(3)
@@ -50,7 +56,7 @@ class StartLearning(CupEntity, ButtonEntity):
         return bool(super().available and not self.coordinator.learning.active)
 
     async def async_press(self):
-        await self.coordinator.learning.start()
+        await learning_action(self.coordinator.learning.start())
 
 
 class CaptureLearning(CupEntity, ButtonEntity):
@@ -63,7 +69,7 @@ class CaptureLearning(CupEntity, ButtonEntity):
                     and self.coordinator.learning.stage in {"empty", "front", "rotated", "offset"})
 
     async def async_press(self):
-        await self.coordinator.learning.capture()
+        await learning_action(self.coordinator.learning.capture())
 
 
 class SaveLearning(CupEntity, ButtonEntity):
@@ -77,7 +83,7 @@ class SaveLearning(CupEntity, ButtonEntity):
                     and not learning.session.error)
 
     async def async_press(self):
-        await self.coordinator.learning.save()
+        await learning_action(self.coordinator.learning.save())
 
 
 class CancelLearning(CupEntity, ButtonEntity):
@@ -89,7 +95,7 @@ class CancelLearning(CupEntity, ButtonEntity):
         return bool(super().available and self.coordinator.learning.active)
 
     async def async_press(self):
-        await self.coordinator.learning.cancel()
+        await learning_action(self.coordinator.learning.cancel())
 
 
 class ApplyCamera(CupEntity,ButtonEntity):

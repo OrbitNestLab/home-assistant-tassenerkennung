@@ -1,18 +1,21 @@
 # Tassenerkennung for Home Assistant
 
-Local cup recognition for a coffee-machine camera, packaged as a Home Assistant custom integration plus a private Ingress app. Version 0.6.0 of the integration and 0.3.2 of the app are included.
+Local cup recognition for a coffee-machine camera, packaged as a Home Assistant custom integration plus a private Ingress app. Version 0.7.0 of the integration and 0.4.1 of the app are included.
 
 The project detects whether a vessel is positioned below the outlet, keeps stale or uncertain images fail-safe, learns several views of a cup, and can switch to another Home Assistant camera from its own sidebar UI. It deliberately contains **no service that starts a beverage**. Any coffee-machine automation must be created and reviewed separately.
 
 ## Highlights
 
 - Fully local image processing with YOLOX S and ONNX Runtime.
+- Automatic coffee-machine and outlet localization with perspective correction and a stable canonical zoom.
 - One-second coordinator with freshness checks and temporal confirmation.
 - Processed camera image with visible detection/position overlays.
 - Guided learner: empty counter, front, rotated and offset views.
 - Nine fresh vessel samples before a profile can be saved.
 - Training lock makes recognition unavailable while a profile is being learned.
-- Quick camera swap: select, preview, apply, align and retrain.
+- Quick camera swap: select, preview, apply, automatically locate the machine/outlet, align and retrain.
+- Observable background jobs in the Ingress UI instead of fragile long-running browser requests.
+- Profile-v3 comparison with empty-counter subtraction, shape/colour checks and separation from the second-best profile.
 - Old profile data is backed up before a write and never silently trusted for a different camera.
 - Ingress-only management UI; no published host port.
 - Fixed Home Assistant API allowlist; the app cannot call arbitrary services.
@@ -20,8 +23,8 @@ The project detects whether a vessel is positioned below the outlet, keeps stale
 
 ## Components
 
-- `custom_components/tassenerkennung/` — Home Assistant integration 0.6.0.
-- `addon/` — local Supervisor app 0.3.2 with the model and responsive sidebar UI.
+- `custom_components/tassenerkennung/` — Home Assistant integration 0.7.0.
+- `addon/` — local Supervisor app 0.4.1 with the model and responsive sidebar UI.
 - `tests/` — local safety, geometry, tracking, learner and HTTP tests.
 
 ## Installation
@@ -34,7 +37,7 @@ The project detects whether a vessel is positioned below the outlet, keeps stale
    ```json
    {
      "url": "http://local-tassenerkennung:8080",
-     "api_key": "THE-SAME-RANDOM-KEY"
+     "token": "THE-SAME-RANDOM-KEY"
    }
    ```
 
@@ -70,7 +73,7 @@ Run:
 python -m pytest tests -q
 ```
 
-The released source passed 31 local tests plus isolated Home Assistant scenarios covering camera loss, stale frames, learning, profile resets and the API allowlist. No real beverage action was triggered during those tests.
+The released source passed 54 local tests plus isolated Home Assistant scenarios covering camera loss, stale frames, automatic 180-degree correction, machine/outlet tracking, learning, profile resets and the API allowlist. No real beverage action was triggered during those tests.
 
 ## Licences
 

@@ -4,7 +4,7 @@ DOMAIN = "tassenerkennung"
 VERSION = "0.1.0"
 MODEL_SHA256 = "c5c2d13e59ae883e6af3b45daea64af4833a4951c92d116ec270d9ddbe998063"
 DEFAULTS = {
-    "camera": "camera.coffee_station",
+    "camera": "camera.eve_cam_07b0",
     "interval": 5,
     "confidence": 0.60,
     "confirmations": 3,
